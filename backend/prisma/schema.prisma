@@ -1,0 +1,169 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  CLIENTE
+  BARBEIRO
+  ADMIN
+}
+
+enum StatusAgendamento {
+  PENDENTE
+  CONFIRMADO
+  CONCLUIDO
+  CANCELADO
+  NAO_COMPARECEU
+}
+
+enum TipoTransacao {
+  ENTRADA
+  SAIDA
+}
+
+enum FormaPagamento {
+  PIX
+  DINHEIRO
+  CARTAO_DEBITO
+  CARTAO_CREDITO
+}
+
+model Usuario {
+  id        BigInt   @id @default(autoincrement())
+  nome      String   @db.VarChar(100)
+  email     String   @unique @db.VarChar(120)
+  senha     String   @db.VarChar(255)
+  telefone  String   @db.VarChar(20)
+  role      Role     @default(CLIENTE)
+  ativo     Boolean  @default(true)
+  criado_em DateTime @default(now()) @db.Timestamptz
+
+  servicos_prestados   BarbeiroServico[]
+  horarios_trabalho    HorarioTrabalho[]
+  bloqueios_agenda     BloqueioAgenda[]
+  agendamentos_cliente  Agendamento[]      @relation("ClienteAgendamentos")
+  agendamentos_barbeiro Agendamento[]     @relation("BarbeiroAgendamentos")
+  transacoes_lancadas  TransacaoCaixa[]
+  fechamentos_caixa    FechamentoCaixa[]
+
+  @@map("usuarios")
+}
+
+model Servico {
+  id              BigInt   @id @default(autoincrement())
+  nome            String   @db.VarChar(100)
+  descricao       String?  @db.Text
+  preco           Decimal  @db.Decimal(10, 2)
+  duracao_minutos Int
+  ativo           Boolean  @default(true)
+
+  barbeiros    BarbeiroServico[]
+  agendamentos AgendamentoServico[]
+
+  @@map("servicos")
+}
+
+model BarbeiroServico {
+  barbeiro_id BigInt
+  servico_id  BigInt
+
+  barbeiro Usuario @relation(fields: [barbeiro_id], references: [id], onDelete: Cascade)
+  servico  Servico @relation(fields: [servico_id], references: [id], onDelete: Cascade)
+
+  @@id([barbeiro_id, servico_id])
+  @@map("barbeiros_servicos")
+}
+
+model HorarioTrabalho {
+  id               BigInt    @id @default(autoincrement())
+  barbeiro_id      BigInt
+  dia_semana       Int       @db.SmallInt
+  hora_inicio      DateTime  @db.Time
+  hora_fim         DateTime  @db.Time
+  inicio_intervalo DateTime? @db.Time
+  fim_intervalo    DateTime? @db.Time
+
+  barbeiro Usuario @relation(fields: [barbeiro_id], references: [id], onDelete: Cascade)
+
+  @@map("horarios_trabalho")
+}
+
+model BloqueioAgenda {
+  id          BigInt   @id @default(autoincrement())
+  barbeiro_id BigInt
+  data_inicio DateTime @db.Timestamptz
+  data_fim    DateTime @db.Timestamptz
+  motivo      String?  @db.VarChar(150)
+
+  barbeiro Usuario @relation(fields: [barbeiro_id], references: [id], onDelete: Cascade)
+
+  @@map("bloqueios_agenda")
+}
+
+model Agendamento {
+  id               BigInt            @id @default(autoincrement())
+  cliente_id       BigInt
+  barbeiro_id      BigInt
+  data_hora_inicio DateTime          @db.Timestamptz
+  data_hora_fim    DateTime          @db.Timestamptz
+  status           StatusAgendamento @default(PENDENTE)
+  valor_total      Decimal           @db.Decimal(10, 2)
+  observacoes      String?           @db.Text
+  criado_em        DateTime          @default(now()) @db.Timestamptz
+
+  cliente    Usuario              @relation("ClienteAgendamentos", fields: [cliente_id], references: [id], onDelete: Restrict)
+  barbeiro   Usuario              @relation("BarbeiroAgendamentos", fields: [barbeiro_id], references: [id], onDelete: Restrict)
+  servicos   AgendamentoServico[]
+  transacoes TransacaoCaixa[]
+
+  @@map("agendamentos")
+}
+
+model AgendamentoServico {
+  id             BigInt  @id @default(autoincrement())
+  agendamento_id BigInt
+  servico_id     BigInt
+  preco_cobrado  Decimal @db.Decimal(10, 2)
+
+  agendamento Agendamento @relation(fields: [agendamento_id], references: [id], onDelete: Cascade)
+  servico     Servico     @relation(fields: [servico_id], references: [id], onDelete: Restrict)
+
+  @@map("agendamentos_servicos")
+}
+
+model TransacaoCaixa {
+  id              BigInt         @id @default(autoincrement())
+  agendamento_id  BigInt?
+  admin_id        BigInt
+  tipo            TipoTransacao
+  valor           Decimal        @db.Decimal(10, 2)
+  forma_pagamento FormaPagamento
+  descricao       String?        @db.VarChar(200)
+  data_hora       DateTime       @default(now()) @db.Timestamptz
+
+  agendamento Agendamento? @relation(fields: [agendamento_id], references: [id], onDelete: SetNull)
+  admin       Usuario      @relation(fields: [admin_id], references: [id], onDelete: Restrict)
+
+  @@map("transacoes_caixa")
+}
+
+model FechamentoCaixa {
+  id              BigInt   @id @default(autoincrement())
+  admin_id        BigInt
+  data_referencia DateTime @unique @db.Date
+  total_dinheiro  Decimal  @default(0.00) @db.Decimal(10, 2)
+  total_pix       Decimal  @default(0.00) @db.Decimal(10, 2)
+  total_cartao    Decimal  @default(0.00) @db.Decimal(10, 2)
+  total_geral     Decimal  @default(0.00) @db.Decimal(10, 2)
+  observacoes     String?  @db.Text
+  fechado_em      DateTime @default(now()) @db.Timestamptz
+
+  admin Usuario @relation(fields: [admin_id], references: [id], onDelete: Restrict)
+
+  @@map("fechamentos_caixa")
+}

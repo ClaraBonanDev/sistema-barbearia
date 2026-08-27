@@ -1,0 +1,1 @@
+console.log("Servidor da Barbearia iniciado!");
